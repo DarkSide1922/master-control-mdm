@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Master Control MDM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    /* Control-room ink base */
+    --bg:#0a0e14; --bg-2:#0d121b; --panel:#121824; --panel-2:#182031; --panel-3:#1e2839;
+    --line:#26314604; --line:#263146; --line-soft:#1c2434;
+    --text:#e8f0fa; --muted:#8b97ac; --faint:#5a6578;
+    /* Signal palette: color = meaning */
+    --primary:#2fd6c3;        /* teal — actions */
+    --primary-ink:#04201d;
+    --primary-dim:#123c39;
+    --tier-master:#a98bff;    /* violet — master tier */
+    --tier-master-dim:#2e2450;
+    --tier-limited:#5fb2ff;   /* blue — limited tier */
+    --tier-limited-dim:#173049;
+    --ok:#3ad39a; --warn:#f4b048; --danger:#ff6b6b; --danger-dim:#3a1d22;
+  }
+  * { box-sizing:border-box; }
+  html { font-size: clamp(14px, 1.5vw, 16px); }
+  body {
+    margin:0; color:var(--text);
+    background:
+      radial-gradient(1100px 520px at 88% -12%, rgba(47,214,195,0.08), transparent 62%),
+      radial-gradient(900px 500px at -5% 0%, rgba(169,139,255,0.06), transparent 55%),
+      var(--bg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a { color:var(--primary); }
+  h1,h2,h3 { letter-spacing:-0.01em; }
+  button { font-family:inherit; }
+
+  /* ---------- Login ---------- */
+  #login {
+    max-width:380px; width:calc(100% - 32px); margin:13vh auto; padding:34px 30px;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--line); border-radius:20px; box-shadow:0 30px 80px rgba(0,0,0,0.5);
+  }
+  .login-mark { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+  .login-mark .glyph { width:36px; height:36px; border-radius:11px;
+    background:conic-gradient(from 140deg, var(--primary), var(--tier-master), var(--primary));
+    box-shadow:0 6px 20px rgba(47,214,195,0.35); }
+  .login-mark .name { font-size:1.05rem; font-weight:700; line-height:1.15; }
+  .login-mark .name small { display:block; color:var(--muted); font-weight:500; font-size:0.72rem; }
+  #login p { color:var(--muted); font-size:0.86rem; margin:0 0 18px; }
+  #login input { width:100%; padding:13px 14px; margin:7px 0; border-radius:12px; border:1px solid var(--line);
+    background:var(--bg-2); color:var(--text); font-size:1rem; }
+  #login input:focus { outline:none; border-color:var(--primary); }
+  #login button { width:100%; padding:13px; margin-top:12px; border-radius:12px; border:none;
+    background:var(--primary); color:var(--primary-ink); font-weight:700; cursor:pointer; font-size:1rem; }
+  #login button:hover { filter:brightness(1.06); }
+
+  #app { display:none; }
+
+  /* ---------- Top bar ---------- */
+  .topbar { display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:12px 22px; border-bottom:1px solid var(--line-soft);
+    background:rgba(10,14,20,0.78); backdrop-filter:blur(12px); position:sticky; top:0; z-index:30; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:12px; font-weight:700; }
+  .brand .glyph { width:26px; height:26px; border-radius:8px;
+    background:conic-gradient(from 140deg, var(--primary), var(--tier-master), var(--primary));
+    box-shadow:0 4px 14px rgba(47,214,195,0.4); }
+  .brand span small { display:block; font-size:0.62rem; color:var(--muted); font-weight:500; letter-spacing:0.02em; }
+  .nav { display:flex; gap:3px; background:var(--panel); padding:4px; border-radius:13px; border:1px solid var(--line-soft); }
+  .nav button { background:none; border:none; color:var(--muted); font-size:0.83rem; font-weight:600;
+    padding:8px 16px; border-radius:10px; cursor:pointer; }
+  .nav button:hover { color:var(--text); }
+  .nav button.active { background:var(--panel-3); color:var(--text); }
+  .topbar-right { display:flex; align-items:center; gap:12px; font-size:0.83rem; color:var(--muted); flex-wrap:wrap; }
+  .tier-badge { display:inline-flex; align-items:center; gap:7px; font-size:0.72rem; font-weight:600;
+    border:1px solid var(--line); border-radius:999px; padding:5px 12px; white-space:nowrap; }
+  .tier-badge .d { width:7px; height:7px; border-radius:50%; }
+  .tier-master { color:var(--tier-master); border-color:rgba(169,139,255,0.5); }
+  .tier-master .d { background:var(--tier-master); }
+  .tier-limited { color:var(--tier-limited); border-color:rgba(95,178,255,0.5); }
+  .tier-limited .d { background:var(--tier-limited); }
+  .tier-viewer { color:var(--muted); }
+  .tier-viewer .d { background:var(--faint); }
+
+  .wrap { max-width:1360px; margin:0 auto; padding:22px; }
+
+  /* ---------- Overview ---------- */
+  .stat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+  .stat { background:linear-gradient(180deg, var(--panel-2), var(--panel)); border:1px solid var(--line-soft);
+    border-radius:16px; padding:18px 20px; }
+  .stat .k { font-size:0.74rem; color:var(--muted); }
+  .stat .v { font-size:2.2rem; font-weight:700; letter-spacing:-0.03em; margin-top:6px; line-height:1; }
+  .stat .sub { font-size:0.76rem; color:var(--faint); margin-top:6px; }
+  .stat.accent .v { color:var(--primary); }
+  .stat.ok .v { color:var(--ok); }
+  .chart-row { display:grid; grid-template-columns:320px 1fr; gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--line-soft); border-radius:16px; padding:20px; }
+  .card > h2 { font-size:0.95rem; margin:0 0 16px; font-weight:650; }
+  .donut-wrap { display:flex; align-items:center; gap:20px; }
+  .legend { display:flex; flex-direction:column; gap:9px; font-size:0.85rem; }
+  .legend div { display:flex; align-items:center; gap:9px; }
+  .legend .sw { width:11px; height:11px; border-radius:3px; }
+  .bars { display:flex; flex-direction:column; gap:11px; max-height:340px; overflow-y:auto; }
+  .bar-row { display:grid; grid-template-columns:140px 1fr 56px; gap:12px; align-items:center; font-size:0.82rem; }
+  .bar-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar-track { height:10px; background:var(--bg-2); border-radius:999px; overflow:hidden; position:relative; }
+  .bar-fill { height:100%; border-radius:999px; background:linear-gradient(90deg, var(--primary), #7defdd); }
+  .bar-online { position:absolute; left:0; top:0; height:100%; border-radius:999px; background:var(--ok); opacity:0.92; }
+  .bar-val { text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  /* ---------- Fleet layout ---------- */
+  #layout { display:flex; gap:16px; align-items:flex-start; }
+  #sidebar { width:300px; flex-shrink:0; background:var(--panel); border:1px solid var(--line-soft);
+    border-radius:16px; padding:14px; max-height:calc(100vh - 132px); overflow-y:auto; position:sticky; top:88px; }
+  #main { flex:1; min-width:0; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; }
+  .panel { background:var(--panel); border:1px solid var(--line-soft); border-radius:16px; padding:20px; }
+  .panel h3 { font-size:0.9rem; margin:0 0 4px; font-weight:650; }
+  .panel .hint { font-size:0.78rem; color:var(--faint); margin:0 0 14px; line-height:1.45; }
+  .status-dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+  .online { background:var(--ok); box-shadow:0 0 8px rgba(58,211,154,0.7); } .offline { background:var(--faint); }
+
+  #screen-wrap { background:#000; border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    display:flex; align-items:center; justify-content:center; min-height:clamp(220px,40vh,440px); }
+  #screen { max-width:100%; max-height:64vh; cursor:crosshair; }
+
+  .btn { padding:10px 15px; border-radius:11px; border:1px solid var(--line); background:var(--panel-2);
+    color:var(--text); cursor:pointer; font-size:0.82rem; font-weight:550; transition:border-color .12s, background .12s; }
+  .btn:hover:not(:disabled) { border-color:var(--primary); background:var(--panel-3); }
+  .btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .btn.primary { background:var(--primary); color:var(--primary-ink); border-color:transparent; font-weight:700; }
+  .btn.master { border-color:rgba(169,139,255,0.45); color:var(--tier-master); }
+  .btn.master:hover:not(:disabled){ background:var(--tier-master-dim); border-color:var(--tier-master); }
+  .btn.danger { border-color:rgba(255,107,107,0.5); color:var(--danger); }
+  .btn.danger:hover:not(:disabled){ background:var(--danger-dim); }
+  .btn.small { padding:7px 11px; font-size:0.76rem; }
+  .btn.locked::after { content:" 🔒"; font-size:0.72em; opacity:0.7; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  #log { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.73rem; color:var(--muted);
+    max-height:200px; overflow-y:auto; white-space:pre-wrap; background:var(--bg-2); border-radius:10px; padding:12px; }
+
+  /* device sub-tabs */
+  .subtabs { display:flex; gap:4px; background:var(--panel); border:1px solid var(--line-soft); border-radius:13px;
+    padding:4px; margin:16px 0; overflow-x:auto; }
+  .subtabs button { background:none; border:none; color:var(--muted); font-size:0.82rem; font-weight:600;
+    padding:9px 15px; border-radius:10px; cursor:pointer; white-space:nowrap; }
+  .subtabs button.active { background:var(--panel-3); color:var(--text); }
+  .subpane { display:none; } .subpane.active { display:block; }
+
+  /* app rows */
+  .app-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:11px;
+    background:var(--panel-2); border:1px solid var(--line-soft); flex-wrap:wrap; }
+  .app-avatar { width:34px; height:34px; border-radius:9px; background:var(--primary-dim); color:#9df0e6;
+    display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; }
+  .app-info { flex:1; min-width:150px; }
+  .app-name { font-size:0.87rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .app-pkg { font-size:0.7rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip { font-size:0.62rem; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:2px 9px; margin-left:8px; }
+  .chip.blocked { color:var(--danger); border-color:rgba(255,107,107,0.5); }
+  .chip.watch { color:var(--warn); border-color:rgba(244,176,72,0.5); }
+  .chip.running { color:var(--ok); border-color:rgba(58,211,154,0.5); }
+
+  /* sidebar fleet */
+  .school-group { margin-bottom:4px; }
+  .school-header { font-size:0.85rem; font-weight:600; padding:10px 8px; cursor:pointer; display:flex;
+    align-items:center; justify-content:space-between; border-radius:10px; gap:6px; }
+  .school-header:hover { background:var(--panel-2); }
+  .school-count { font-size:0.7rem; color:var(--muted); font-weight:500; white-space:nowrap; }
+  .device-item { display:flex; align-items:center; gap:8px; padding:9px 10px 9px 22px; border-radius:10px;
+    cursor:pointer; font-size:0.82rem; }
+  .device-item:hover { background:var(--panel-2); }
+  .device-item.selected { background:var(--panel-3); box-shadow:inset 2px 0 0 var(--primary); }
+  .device-item-label { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .icon-btn { background:none; border:none; color:var(--faint); cursor:pointer; font-size:0.8rem; padding:3px 6px;
+    border-radius:7px; line-height:1; flex-shrink:0; }
+  .icon-btn:hover { color:var(--text); background:var(--line); }
+  #no-device-msg { color:var(--muted); font-size:0.92rem; text-align:center; padding:80px 20px;
+    border:1px dashed var(--line); border-radius:16px; }
+
+  .form-input { width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line);
+    background:var(--bg-2); color:var(--text); margin-bottom:8px; font-size:0.86rem; }
+  .form-input:focus { outline:none; border-color:var(--primary); }
+  select.form-input { cursor:pointer; }
+
+  .user-row { display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--line-soft);
+    font-size:0.85rem; flex-wrap:wrap; }
+  .user-row:last-child { border-bottom:none; }
+  .meta-line { font-size:0.76rem; color:var(--muted); }
+  .subtitle { font-size:0.76rem; color:var(--muted); margin-top:5px; }
+
+  /* segmented control (settings deadlock, non-coder friendly) */
+  .segmented { display:inline-flex; background:var(--bg-2); border:1px solid var(--line); border-radius:11px; padding:3px; gap:3px; flex-wrap:wrap; }
+  .segmented button { border:none; background:none; color:var(--muted); font-size:0.8rem; font-weight:600;
+    padding:8px 14px; border-radius:8px; cursor:pointer; }
+  .segmented button.on { background:var(--panel-3); color:var(--text); }
+  .segmented button.on.block { color:var(--danger); }
+  .segmented button.on.limit { color:var(--warn); }
+  .segmented button.on.allow { color:var(--ok); }
+  .segmented button:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* provisioning command block */
+  .codeblock { display:flex; align-items:center; gap:10px; background:#05080d; border:1px solid var(--line);
+    border-radius:11px; padding:12px 14px; font-family:ui-monospace, Menlo, monospace; font-size:0.78rem;
+    color:#bfe9e2; overflow-x:auto; }
+  .codeblock code { white-space:nowrap; }
+
+  /* shell console */
+  #shell-out { font-family:ui-monospace, Menlo, monospace; font-size:0.74rem; background:#05080d;
+    border:1px solid var(--line); border-radius:11px; padding:12px; height:230px; overflow-y:auto;
+    white-space:pre-wrap; color:#cfe9e4; }
+  #shell-out .cmd { color:var(--primary); } #shell-out .err { color:var(--danger); } #shell-out .sys { color:var(--muted); }
+  .shell-input-row { display:flex; gap:8px; margin-top:10px; }
+  .shell-input-row input { flex:1; font-family:ui-monospace, Menlo, monospace; }
+
+  .banner { border-radius:11px; padding:11px 14px; font-size:0.8rem; margin-bottom:14px; line-height:1.45; }
+  .banner.master { background:var(--tier-master-dim); border:1px solid rgba(169,139,255,0.35); color:#d9ccff; }
+  .banner.warn { background:rgba(244,176,72,0.12); border:1px solid rgba(244,176,72,0.35); color:#f5d59a; }
+
+  .kv { display:flex; flex-direction:column; gap:6px; font-size:0.8rem; }
+  .kv div { display:flex; justify-content:space-between; gap:12px; }
+  .kv .kv-k { color:var(--muted); } .kv .kv-v { color:var(--text); font-variant-numeric:tabular-nums; text-align:right; }
+  .toggle-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0;
+    border-bottom:1px solid var(--line-soft); }
+  .toggle-row:last-child { border-bottom:none; }
+  .toggle-row .t-title { font-size:0.87rem; font-weight:600; } .toggle-row .t-sub { font-size:0.74rem; color:var(--faint); margin-top:2px; }
+
+  @media (max-width:1000px){ #sidebar{ width:240px; } .stat-row{ grid-template-columns:repeat(2,1fr);} .chart-row{ grid-template-columns:1fr;} }
+  @media (max-width:800px){ #layout{ flex-direction:column;} #sidebar{ width:100%; max-height:280px; position:static;} .panel{padding:16px;} }
+  @media (max-width:480px){ .wrap{padding:13px;} .stat-row{grid-template-columns:1fr 1fr; gap:10px;} .grid{grid-template-columns:1fr;} .bar-row{grid-template-columns:96px 1fr 46px;} }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-mark">
+    <span class="glyph"></span>
+    <span class="name">Master Control MDM<small>Fleet device management</small></span>
+  </div>
+  <p>Sign in to manage your tablet fleet.</p>
+  <input id="username" type="text" placeholder="Username" autocomplete="username" />
+  <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+  <button onclick="doLogin()">Sign in</button>
+  <div id="login-error" style="color:var(--danger); font-size:13px; margin-top:12px;"></div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="brand"><span class="glyph"></span><span>Master Control MDM<small>Fleet device management</small></span></div>
+    <div class="nav">
+      <button id="nav-overview" class="active" onclick="switchView('overview')">Overview</button>
+      <button id="nav-fleet" onclick="switchView('fleet')">Fleet</button>
+      <button id="nav-master" onclick="switchView('master')" style="display:none;">Master control</button>
+      <button id="nav-accounts" onclick="switchView('accounts')" style="display:none;">Accounts</button>
+    </div>
+    <div class="topbar-right">
+      <span id="me-username"></span>
+      <span id="me-tier" class="tier-badge"></span>
+      <button class="btn small" onclick="logout()">Sign out</button>
+    </div>
+  </div>
+
+  <!-- ============ OVERVIEW ============ -->
+  <div id="view-overview" class="wrap">
+    <div class="stat-row">
+      <div class="stat"><div class="k">Schools</div><div class="v" id="stat-schools">—</div><div class="sub">registered sites</div></div>
+      <div class="stat accent"><div class="k">Tablets</div><div class="v" id="stat-tablets">—</div><div class="sub">total enrolled</div></div>
+      <div class="stat ok"><div class="k">Online now</div><div class="v" id="stat-online">—</div><div class="sub" id="stat-online-sub">checking in</div></div>
+      <div class="stat"><div class="k">Offline</div><div class="v" id="stat-offline">—</div><div class="sub">asleep or off</div></div>
+    </div>
+    <div class="chart-row">
+      <div class="card">
+        <h2>Connectivity</h2>
+        <div class="donut-wrap">
+          <div id="donut"></div>
+          <div class="legend">
+            <div><span class="sw" style="background:var(--ok);"></span> Online <span id="legend-online" class="meta-line"></span></div>
+            <div><span class="sw" style="background:var(--faint);"></span> Offline <span id="legend-offline" class="meta-line"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Tablets per school</h2>
+        <div class="bars" id="school-bars"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FLEET ============ -->
+  <div id="view-fleet" class="wrap" style="display:none;">
+    <div id="layout">
+      <div id="sidebar">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <h3 style="margin:0;">Fleet</h3>
+          <button class="btn small" onclick="loadFleet()">Refresh</button>
+        </div>
+        <div id="school-list" style="margin-top:8px;"></div>
+        <div id="add-school-box" style="margin-top:14px; display:none;">
+          <input id="new-school-name" class="form-input" placeholder="New school name" />
+          <button class="btn small primary" style="width:100%;" onclick="createSchool()">Add school</button>
+        </div>
+      </div>
+
+      <div id="main">
+        <div id="no-device-msg">Select a tablet from the fleet list to view and control it.</div>
+
+        <div id="device-view" style="display:none;">
+          <div class="row" style="align-items:flex-start; justify-content:space-between;">
+            <div>
+              <span id="status-dot" class="status-dot offline"></span>
+              <strong id="device-title" style="font-size:1.05rem;"></strong>
+              <div id="device-subtitle" class="subtitle"></div>
+              <div id="status-text" class="subtitle"></div>
+            </div>
+            <div id="battery" style="font-size:0.85rem; color:var(--muted);"></div>
+          </div>
+
+          <div class="subtabs" id="device-subtabs">
+            <button class="active" data-sub="control" onclick="switchSub('control')">Control</button>
+            <button data-sub="apps" onclick="switchSub('apps')">Apps</button>
+            <button data-sub="lockdown" onclick="switchSub('lockdown')">Lockdown</button>
+            <button data-sub="master" data-min-role="master" onclick="switchSub('master')">Master control</button>
+            <button data-sub="activity" onclick="switchSub('activity')">Activity</button>
+          </div>
+
+          <!-- ----- CONTROL ----- -->
+          <div class="subpane active" id="sub-control">
+            <div class="row">
+              <div class="panel" style="flex:2; min-width:340px;">
+                <h3>Live screen</h3>
+                <p class="hint">Click the screen to tap that spot. Wake the tablet first if it's asleep.</p>
+                <div id="screen-wrap"><img id="screen" alt="Waiting for the screen stream…" /></div>
+                <div class="row" style="margin-top:12px;">
+                  <button class="btn" onclick="sendCmd('start_screen_stream')">Start stream</button>
+                  <button class="btn" onclick="sendCmd('stop_screen_stream')">Stop stream</button>
+                  <button class="btn" data-min-role="limited" onclick="sendCmd('wake_device')">Wake screen</button>
+                </div>
+                <div class="row" style="margin-top:10px; justify-content:center; gap:8px;">
+                  <button class="btn" data-min-role="limited" title="Previous home screen" onclick="pageSwipe('right')">◀</button>
+                  <button class="btn" data-min-role="limited" title="Open app drawer" onclick="pageSwipe('up')">Apps ▲</button>
+                  <button class="btn" data-min-role="limited" title="Next home screen" onclick="pageSwipe('left')">▶</button>
+                </div>
+                <div class="row" style="margin-top:8px; justify-content:center; gap:8px;">
+                  <button class="btn small" data-min-role="limited" onclick="sendCmd('go_back')">Back</button>
+                  <button class="btn small" data-min-role="limited" onclick="sendCmd('go_home')">Home</button>
+                  <button class="btn small" data-min-role="limited" onclick="sendCmd('show_recents')">Recent apps</button>
+                  <button class="btn small" data-min-role="limited" onclick="sendCmd('show_notifications')">Notifications</button>
+                  <button class="btn small" data-min-role="limited" onclick="sendCmd('show_quick_settings')">Quick settings</button>
+                </div>
+              </div>
+
+              <div class="panel" style="flex:1; min-width:260px;">
+                <h3>Quick actions</h3>
+                <p class="hint">Everyday controls for classroom and administration use.</p>
+                <div class="grid">
+                  <button class="btn" data-min-role="limited" onclick="sendCmd('lock_now')">Lock now</button>
+                  <button class="btn" onclick="sendCmd('get_status')">Refresh status</button>
+                </div>
+
+                <h3 style="margin-top:20px;">Volume</h3>
+                <div class="row" style="align-items:center; justify-content:space-between;">
+                  <span class="meta-line">Level</span><span id="volume-label" class="meta-line">—</span>
+                </div>
+                <div class="row" style="align-items:center; gap:10px; margin-top:6px;">
+                  <input id="volume-slider" data-min-role="limited" type="range" min="0" max="100" value="50" style="flex:1;"
+                    oninput="onVolumeSliderInput()" onchange="onVolumeSliderCommit()" />
+                  <button id="mute-btn" class="btn small" data-min-role="limited" onclick="toggleMute()">Mute</button>
+                </div>
+
+                <h3 style="margin-top:20px;">Keep awake</h3>
+                <p class="hint">Hold the screen on for a hands-off session.</p>
+                <div class="grid">
+                  <button class="btn" data-min-role="limited" onclick="sendCmd('set_keep_awake',{enabled:true})">On</button>
+                  <button class="btn" data-min-role="limited" onclick="sendCmd('set_keep_awake',{enabled:false})">Off</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ----- APPS (watch list + control list, non-coder friendly) ----- -->
+          <div class="subpane" id="sub-apps">
+            <div class="row">
+              <div class="panel" style="flex:1; min-width:280px;">
+                <h3>Watch list</h3>
+                <p class="hint">Apps you want to keep an eye on. A green dot means it's installed on this tablet right now.</p>
+                <div id="watchlist"></div>
+                <div class="row" style="margin-top:12px; gap:8px;">
+                  <input id="watch-add" class="form-input" style="flex:1; margin:0;" placeholder="Add app by package (e.g. com.roblox.client)" />
+                  <button class="btn" data-min-role="limited" onclick="addWatch()">Add</button>
+                </div>
+              </div>
+              <div class="panel" style="flex:1; min-width:280px;">
+                <h3>Control list</h3>
+                <p class="hint">Apps you've chosen to block or allow. Blocking hides the app on the tablet; the choice sticks even while the tablet is offline and re-applies when it reconnects.</p>
+                <div id="controllist"></div>
+                <button class="btn small" data-min-role="limited" style="margin-top:12px;" onclick="syncControl()">Re-apply all now</button>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-top:14px;">
+              <h3>Apps installed on this tablet</h3>
+              <p class="hint">Open, close, block or watch any app. Blocking needs master or limited access; blocking uses Device-Owner controls.</p>
+              <div class="row" style="align-items:center; gap:12px;">
+                <input id="app-search" oninput="renderApps()" placeholder="Search apps…" class="form-input" style="flex:1; min-width:180px; margin:0;" />
+                <label class="meta-line" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                  <input type="checkbox" id="show-system" onchange="renderApps()" /> Show system apps
+                </label>
+                <button class="btn small" onclick="loadApps()">Refresh apps</button>
+              </div>
+              <div id="apps-empty" class="meta-line" style="margin-top:12px;">No app list loaded yet — click "Refresh apps".</div>
+              <div id="apps-list" style="margin-top:12px; display:flex; flex-direction:column; gap:7px;"></div>
+            </div>
+          </div>
+
+          <!-- ----- LOCKDOWN (settings deadlock) ----- -->
+          <div class="subpane" id="sub-lockdown">
+            <div class="panel">
+              <h3>Lock the Settings app</h3>
+              <p class="hint">Choose how much of Android Settings students can reach. "Limit" keeps Settings open but blocks Wi-Fi, accounts, date/time and app controls. "Block" hides the Settings app entirely. Needs Device Owner (master control provisioning).</p>
+              <div class="segmented" id="settings-lock-seg">
+                <button class="allow" data-mode="allow" data-min-role="limited" onclick="setSettingsLock('allow')">Allow</button>
+                <button class="limit" data-mode="limit" data-min-role="limited" onclick="setSettingsLock('limit')">Limit access</button>
+                <button class="block" data-mode="block" data-min-role="limited" onclick="setSettingsLock('block')">Block (deadlock)</button>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-top:14px;">
+              <h3>Device lockdown</h3>
+              <p class="hint">Lockdown blocks factory reset, safe boot, adding accounts, unknown-source installs and hides the status bar. This is the strongest set of restrictions Android grants a Device Owner.</p>
+              <div class="grid">
+                <button class="btn danger" data-min-role="master" onclick="confirmLockdown(true)">Turn lockdown on</button>
+                <button class="btn" data-min-role="master" onclick="sendCmd('lockdown_off')">Turn lockdown off</button>
+              </div>
+              <h3 style="margin-top:20px;">Camera</h3>
+              <div class="grid">
+                <button class="btn" data-min-role="master" onclick="sendCmd('set_camera_disabled',{disabled:true})">Disable camera</button>
+                <button class="btn" data-min-role="master" onclick="sendCmd('set_camera_disabled',{disabled:false})">Enable camera</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ----- MASTER CONTROL ----- -->
+          <div class="subpane" id="sub-master">
+            <div class="banner master">Master control is the IT / root tier. Actions here can install software, run shell commands and wipe the device. Everything you run is recorded in the activity log with your username.</div>
+
+            <div class="panel">
+              <h3>Master control provisioning</h3>
+              <p class="hint">Run this once per tablet over ADB to make the agent the Device Owner. This is what unlocks silent install/uninstall, lockdown, the settings deadlock and remote wipe. The device must have no accounts added (cleanest right after a factory reset).</p>
+              <div class="codeblock">
+                <code id="provision-cmd">adb shell dpm set-device-owner "com.matepadmdm.agent/.MdmDeviceAdminReceiver"</code>
+                <button class="btn small" style="margin-left:auto;" onclick="copyProvision()">Copy</button>
+              </div>
+              <div id="owner-state" class="subtitle" style="margin-top:10px;"></div>
+            </div>
+
+            <div class="panel" style="margin-top:14px;">
+              <h3>Root / shell command console</h3>
+              <p class="hint">Runs a shell command on the tablet. Uses <code>su</code> if the device is rooted; otherwise it runs with the agent's own privileges (many <code>pm</code>, <code>am</code>, <code>settings</code> and <code>dumpsys</code> reads still work). Output appears below.</p>
+              <div id="shell-out"><span class="sys">Ready. Type a command below and press Run.</span></div>
+              <div class="shell-input-row">
+                <input id="shell-cmd" class="form-input" style="margin:0;" placeholder="e.g. getprop ro.product.model" data-min-role="master"
+                  onkeydown="if(event.key==='Enter')runShell()" />
+                <button class="btn master" data-min-role="master" onclick="runShell()">Run</button>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-top:14px;">
+              <h3>Install or remove software</h3>
+              <p class="hint">Silently install an APK from a URL, or uninstall an app by package name. Device Owner only.</p>
+              <input id="install-url" class="form-input" placeholder="APK download URL (https://…)" data-min-role="master" />
+              <button class="btn master" data-min-role="master" style="margin-bottom:14px;" onclick="installApk()">Install APK</button>
+              <input id="uninstall-pkg" class="form-input" placeholder="Package to uninstall (e.g. com.example.app)" data-min-role="master" />
+              <button class="btn danger" data-min-role="master" onclick="uninstallPkg()">Uninstall app</button>
+            </div>
+
+            <div class="panel" style="margin-top:14px;">
+              <h3>Software update</h3>
+              <p class="hint">Push the published agent update to this tablet now. Because the agent is Device Owner, the update installs silently and in place — Device-Owner status and every granted permission carry over, so nothing needs to be re-approved on the tablet.</p>
+              <div class="kv" style="margin-bottom:12px;">
+                <div><span class="kv-k">Installed version</span><span class="kv-v" id="dev-agent-version">—</span></div>
+                <div><span class="kv-k">Published version</span><span class="kv-v" id="dev-published-version">—</span></div>
+              </div>
+              <button class="btn master" data-min-role="master" onclick="pushUpdateToDevice()">Update this tablet now</button>
+            </div>
+
+            <div class="panel" style="margin-top:14px;">
+              <h3>Danger zone</h3>
+              <p class="hint">These interrupt whoever is using the tablet.</p>
+              <div class="grid">
+                <button class="btn danger" data-min-role="master" onclick="confirmReboot()">Restart tablet</button>
+                <button class="btn danger" data-min-role="master" onclick="confirmWipe()">Factory reset (wipe)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ----- ACTIVITY ----- -->
+          <div class="subpane" id="sub-activity">
+            <div class="panel">
+              <h3>Live activity</h3>
+              <div id="log"></div>
+            </div>
+            <div class="panel" style="margin-top:14px;">
+              <h3>Command history</h3>
+              <p class="hint">The last commands sent to this tablet, and who sent them.</p>
+              <div id="cmd-history" class="kv"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MASTER CONTROL (fleet-wide) ============ -->
+  <div id="view-master" class="wrap" style="display:none;">
+    <div class="card" style="max-width:720px;">
+      <h2>Fleet software update</h2>
+      <p class="hint">Publish one agent build for the whole fleet. Turn on auto-update and every tablet installs it silently the next time it checks in — no tablet visit and no re-granting permissions, because the update installs in place as Device Owner.</p>
+      <label class="meta-line">New version name (must match the APK's versionName, e.g. 1.1)</label>
+      <input id="mf-version" class="form-input" placeholder="1.1" />
+      <label class="meta-line">APK download URL (https, reachable from the tablets)</label>
+      <input id="mf-url" class="form-input" placeholder="https://updates.yourdomain.com/agent-1.1.apk" />
+      <div class="toggle-row">
+        <div><div class="t-title">Auto-update the fleet</div><div class="t-sub">Out-of-date tablets update themselves on next check-in.</div></div>
+        <label class="segmented"><input type="checkbox" id="mf-auto" style="margin:8px 12px;" /></label>
+      </div>
+      <button class="btn primary" style="margin-top:14px;" onclick="saveManifest()">Save update settings</button>
+    </div>
+
+    <div class="card" style="max-width:720px; margin-top:16px;">
+      <h2>Push update to a school</h2>
+      <p class="hint">Send the published update to every tablet at one school right now.</p>
+      <select id="mf-school" class="form-input"></select>
+      <button class="btn master" onclick="pushUpdateToSchool()">Push update to this school</button>
+    </div>
+  </div>
+
+  <!-- ============ ACCOUNTS ============ -->
+  <div id="view-accounts" class="wrap" style="display:none;">
+    <div class="card" style="max-width:680px;">
+      <h2>Accounts &amp; access</h2>
+      <p class="hint">Three access levels. <strong style="color:var(--muted)">View only</strong> can watch but change nothing. <strong style="color:var(--tier-limited)">Limited control</strong> is the classroom and administration tier — lock, volume, navigation, open/close and block apps, and the settings lock. <strong style="color:var(--tier-master)">Master control</strong> adds the IT / root tier — install, uninstall, shell console, lockdown, software updates and wipe.</p>
+      <div id="user-list"></div>
+      <div style="margin-top:18px; border-top:1px solid var(--line-soft); padding-top:18px;">
+        <input id="new-username" class="form-input" placeholder="Username" />
+        <input id="new-password" class="form-input" type="password" placeholder="Password (min 8 characters)" />
+        <select id="new-role" class="form-input">
+          <option value="viewer">View only</option>
+          <option value="limited">Limited control</option>
+          <option value="master">Master control</option>
+        </select>
+        <button class="btn primary" style="width:100%;" onclick="createUser()">Create account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="dashboard.js"></script>
+</body>
+</html>
